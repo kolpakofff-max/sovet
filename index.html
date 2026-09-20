@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Система кругов — ШильдПанель</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://api.bitrix24.com/api/v1/"></script>
+<style>
+  :root{
+    --bg: #10161d;
+    --bg-2: #141b23;
+    --grid-dot: rgba(233,238,242,0.05);
+    --metal-1: #c3c9cf;
+    --metal-2: #8a929a;
+    --metal-edge: #565e66;
+    --ink: #212930;
+    --ink-soft: rgba(33,41,48,0.55);
+    --paper: #e9edf0;
+    --muted: #8b96a1;
+    --muted-2: #5c6670;
+    --copper: #dd944f;
+    --copper-soft: rgba(221,148,79,0.32);
+    --copper-dim: rgba(221,148,79,0.14);
+    --green: #57b287;
+    --danger: #c96a5c;
+    --panel-bg: #171e26;
+    --panel-border: #263039;
+    --font-display: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    background: var(--bg);
+    color: var(--paper);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    min-height:100vh;
+    background-image:
+      radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -6px -6px;
+  }
+
+  .wrap{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 48px 28px 96px;
+  }
+
+  header.page-head{
+    display:flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 22px;
+    margin-bottom: 40px;
+  }
+
+  header.page-head h1{
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+    color: var(--paper);
+  }
+
+  header.page-head p{
+    margin: 0;
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 46ch;
+    line-height: 1.5;
+  }
+
+  .head-mark{
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted-2);
+    text-align: right;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+
+  .head-mark b{ color: var(--copper); font-weight: 500; }
+
+  /* ---------- diagram ---------- */
+
+  .diagram-shell{
+    position: relative;
+  }
+
+  .diagram-scroll{
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 2px 18px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-border) transparent;
+  }
+
+  .diagram-scroll::-webkit-scrollbar{ height: 8px; }
+  .diagram-scroll::-webkit-scrollbar-thumb{ background: var(--panel-border); border-radius: 4px; }
+
+  svg.diagram{ display:block; }
+
+  .node{ cursor: pointer; }
+  .node .plate{ transition: transform .18s ease, filter .18s ease; }
+  .node:hover .plate{ transform: translateY(-3px); filter: brightness(1.06); }
+  .node:focus-visible .plate{ outline: 2px solid var(--copper); outline-offset: 3px; }
+  .node.selected .plate{ filter: brightness(1.1); }
+
+  .ghost-node{ cursor: pointer; }
+  .ghost-node .ghost-ring{ transition: stroke .15s ease, fill .15s ease; }
+  .ghost-node:hover .ghost-ring{ stroke: var(--copper); }
+  .ghost-node:hover .ghost-plus{ stroke: var(--copper); }
+
+  .diagram-hint{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted-2);
+    text-align: center;
+    margin-top: 4px;
+  }
+
+  /* ---------- detail drawer ---------- */
+
+  .scrim{
+    position: fixed; inset: 0;
+    background: rgba(6,9,12,0.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s ease;
+    z-index: 40;
+  }
+  .scrim.open{ opacity: 1; pointer-events: auto; }
+
+  .drawer{
+    position: fixed;
+    top: 0; right: 0; height: 100%;
+    width: 380px; max-width: 92vw;
+    background: linear-gradient(180deg, var(--metal-1), var(--metal-2));
+    color: var(--ink);
+    box-shadow: -18px 0 40px rgba(0,0,0,0.35);
+    transform: translateX(105%);
+    transition: transform .28s cubic-bezier(.2,.8,.25,1);
+    z-index: 50;
+    overflow-y: auto;
+  }
+  .drawer.open{ transform: translateX(0); }
+
+  .drawer-inner{ padding: 28px 26px 32px; }
+
+  .drawer-top{
+    display:flex; justify-content: space-between; align-items:flex-start;
+    margin-bottom: 18px;
+  }
+
+  .drawer-eyebrow{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0 0 6px;
+  }
+
+  .drawer h2{
+    font-size: 21px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+
+  .drawer-top-info{ flex: 1; min-width: 0; }
+
+  .title-input{
+    display: block;
+    width: 100%;
+    font-family: var(--font-display);
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.25;
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    padding: 0 0 2px;
+    margin: 0;
+  }
+  .title-input:hover{ border-bottom-color: rgba(33,41,48,0.25); }
+  .title-input:focus{ outline: none; border-bottom-color: var(--copper); }
+
+  .drawer .aka{
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin: 6px 0 0;
+  }
+
+  .drawer-close{
+    background: rgba(33,41,48,0.12);
+    border: none;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    color: var(--ink);
+    font-size: 16px;
+    cursor: pointer;
+    flex: none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .drawer-close:hover{ background: rgba(33,41,48,0.22); }
+
+  .drawer-section{ margin-top: 26px; }
+
+  .drawer-section h3{
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 12px;
+  }
+
+  .chip-row{
+    display:flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .chip{
+    display:inline-flex; align-items:center; gap:7px;
+    background: rgba(33,41,48,0.10);
+    border: 1px solid rgba(33,41,48,0.18);
+    padding: 6px 8px 6px 12px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+  }
+
+  .chip button{
+    background: none; border:none; cursor:pointer;
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px;
+    border-radius: 50%;
+  }
+  .chip button:hover{ color: var(--danger); }
+
+  .chip-move{
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 11px;
+    line-height: 1;
+    padding: 1px 2px;
+    border-radius: 4px;
+  }
+  .chip-move:hover:not(:disabled){ color: var(--ink); background: rgba(33,41,48,0.1); }
+  .chip-move:disabled{ opacity: .25; cursor: default; }
+
+  .add-row{ display:flex; gap: 8px; }
+
+  .add-row input[type=text]{
+    flex: 1;
+    background: rgba(255,255,255,0.35);
+    border: 1px solid rgba(33,41,48,0.22);
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .add-row input[type=text]::placeholder{ color: rgba(33,41,48,0.45); }
+  .add-row input[type=text]:focus{ outline: 2px solid var(--copper); outline-offset: 1px; }
+
+  .btn-copper{
+    background: var(--copper);
+    color: #2a1a0c;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-copper:hover{ filter: brightness(1.06); }
+  .btn-copper:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-danger{ background: var(--danger); color: #2a0f0c; }
+
+  /* ---------- hover tooltip ---------- */
+
+  .tooltip{
+    position: fixed;
+    pointer-events: none;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--paper);
+    max-width: 240px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .12s ease, transform .12s ease;
+    z-index: 70;
+    line-height: 1.5;
+  }
+  .tooltip.visible{ opacity: 1; transform: translateY(0); }
+  .tt-members{ color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+  .tt-line{ color: var(--muted); font-family: var(--font-mono); font-size: 12px; text-align: center; }
+
+  .drawer textarea{
+    width: 100%;
+    min-height: 76px;
+    resize: vertical;
+    background: rgba(255,255,255,0.35);
+    border: 1px solid rgba(33,41,48,0.22);
+    border-radius: 8px;
+    padding: 10px 11px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .drawer textarea::placeholder{ color: rgba(33,41,48,0.42); }
+  .drawer textarea:focus{ outline: 2px solid var(--copper); outline-offset: 1px; }
+
+  .save-note{
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-top: 6px;
+  }
+
+  .danger-link{
+    display:inline-block;
+    margin-top: 30px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    background: none; border: none; cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-color: rgba(33,41,48,0.3);
+  }
+  .danger-link:hover{ color: var(--danger); text-decoration-color: var(--danger); }
+
+  /* ---------- new circle modal ---------- */
+
+  .modal-scrim{
+    position: fixed; inset: 0;
+    background: rgba(6,9,12,0.6);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none;
+    transition: opacity .18s ease;
+    z-index: 60;
+    padding: 20px;
+  }
+  .modal-scrim.open{ opacity:1; pointer-events:auto; }
+
+  .modal{
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    width: 420px; max-width: 100%;
+    padding: 26px 24px;
+  }
+
+  .modal h3{ margin: 0 0 4px; font-size: 18px; font-weight:600; color: var(--paper); }
+  .modal p.hint{ margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height:1.5; }
+
+  .field{ margin-bottom: 16px; }
+  .field label{
+    display:block; font-family: var(--font-mono); font-size: 12px;
+    color: var(--muted); margin-bottom: 7px;
+  }
+  .field input[type=text]{
+    width: 100%;
+    background: var(--bg-2);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--font-display);
+    font-size: 14.5px;
+    color: var(--paper);
+  }
+  .field input[type=text]:focus{ outline: 2px solid var(--copper); outline-offset: 1px; border-color: var(--copper); }
+  .field input::placeholder{ color: var(--muted-2); }
+
+  .modal-actions{ display:flex; justify-content:flex-end; gap: 10px; margin-top: 22px; }
+
+  .btn-ghost{
+    background: none; border: 1px solid var(--panel-border);
+    color: var(--muted); border-radius: 8px;
+    padding: 9px 14px; font-family: var(--font-display); font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-ghost:hover{ color: var(--paper); border-color: var(--muted-2); }
+
+  footer.page-foot{
+    margin-top: 56px;
+    display:flex; justify-content: space-between; align-items:center;
+    flex-wrap: wrap; gap: 12px;
+  }
+
+  .reset-link{
+    background:none; border:none; cursor:pointer;
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--muted-2);
+  }
+  .reset-link:hover{ color: var(--muted); }
+
+  .count-note{
+    font-family: var(--font-mono); font-size: 12px; color: var(--muted-2);
+  }
+
+  @media (max-width: 640px){
+    .wrap{ padding: 32px 16px 64px; }
+    header.page-head{ flex-direction: column; align-items: flex-start; }
+    .head-mark{ text-align: left; }
+    .drawer{ width: 100%; top: auto; bottom:0; height: auto; max-height: 86vh;
+      border-radius: 16px 16px 0 0; transform: translateY(105%); }
+    .drawer.open{ transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .node .plate, .drawer, .scrim, .modal-scrim{ transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+    <header class="page-head">
+      <div>
+        <h1>Система кругов</h1>
+        <p>Советы ШильдПанель, отвечающие за свою область — с составом участников и зоной ответственности каждого.</p>
+      </div>
+      <div class="head-mark" id="headMark">ШильдПанель<br><b>—</b> советов сейчас</div>
+    </header>
+
+    <div class="diagram-shell">
+      <div class="diagram-scroll" id="diagramScroll">
+        <svg id="diagram" class="diagram" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="diagram-hint">Нажмите на круг, чтобы увидеть состав, зоны возможностей и ответственности. Круги можно перетаскивать.</div>
+    </div>
+
+    <footer class="page-foot">
+      <span class="count-note" id="footNote"></span>
+      <button class="reset-link" id="resetBtn">вернуть исходный вид</button>
+    </footer>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-inner" id="drawerInner"></div>
+  </aside>
+
+  <datalist id="employeeList"></datalist>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <div class="modal-scrim" id="confirmScrim">
+    <div class="modal">
+      <h3 id="confirmTitle">Подтвердите действие</h3>
+      <p class="hint" id="confirmMessage"></p>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="confirmCancel">Отмена</button>
+        <button class="btn-copper btn-danger" id="confirmOk">Да</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-scrim" id="modalScrim">
+    <div class="modal">
+      <h3>Новый совет</h3>
+      <p class="hint">Добавьте тематический совет — он появится в общей системе кругов.</p>
+      <div class="field">
+        <label for="newTitle">Название совета</label>
+        <input type="text" id="newTitle" placeholder="например, Логистика" />
+      </div>
+      <div class="field">
+        <label for="newMembers">Участники, через запятую</label>
+        <input type="text" id="newMembers" placeholder="например, Игорь, Наталья" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="modalCancel">Отмена</button>
+        <button class="btn-copper" id="modalCreate">Создать</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ============ data ============ */
+
+const DEFAULT_CIRCLES = [
+  {
+    id: 'top',
+    kind: 'anchor',
+    title: 'SPfuture',
+    short: ['SPfuture'],
+    aka: 'проектирование будущего',
+    members: ['Владислав Запрягаев', 'Елизавета Никитина', 'Илья Колпаков', 'Александр Ярославцев'],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'pe',
+    kind: 'sub',
+    title: 'Печатная электроника',
+    short: ['печатная', 'электроника'],
+    aka: '',
+    members: ['Полина Герасимова', 'Дима'],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'ktb',
+    kind: 'sub',
+    title: 'КТБ',
+    short: ['КТБ'],
+    aka: 'конструкторско-технологическое бюро',
+    members: ['Артём Кошецян', 'Дима', 'Дима', 'Дмитрий Дедюхин'],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'spdesign',
+    kind: 'sub',
+    title: 'SPdesign',
+    short: ['SPdesign'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'splove',
+    kind: 'sub',
+    title: 'SPlove',
+    short: ['SPlove'],
+    aka: 'познание и развитие человека и сообществ',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'culture',
+    kind: 'sub',
+    title: 'Культура и философия',
+    short: ['культура', 'философия'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'marketing',
+    kind: 'sub',
+    title: 'Маркетинг',
+    short: ['маркетинг'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'content',
+    kind: 'sub',
+    title: 'Контент',
+    short: ['контент'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'newproducts',
+    kind: 'sub',
+    title: 'Новые продукты',
+    short: ['новые', 'продукты'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  },
+  {
+    id: 'funrest',
+    kind: 'sub',
+    title: 'Отдых и веселье',
+    short: ['отдых', 'веселье'],
+    aka: '',
+    members: [],
+    notes: '',
+    candidates: []
+  }
+];
+
+const STORAGE_KEY = 'sistema-krugov:circles:v10';
+
+const FALLBACK_EMPLOYEES = ["Мохаммед Аль Курди","Махмуд Альхарес","Виктория Анищенко","Татьяна Антипова","Александр Антошкин","Кирилл Балбеков","Людмила Барт","Анастасия Безрукова","Игорь Белоус","Екатерина Бобровская","Полина Богачева","Ирина Буравель","Илья Викторов","Анастасия Волкова","Андрей Гаврилов","Алена Гаврилова","Анна Гаврилова","Полина Гагарина","Полина Герасимова","Андрей Голубев","Алёна Голубева","Полина Горькова","Евгений Горюнов","Игорь Григорьев","Александра Григорюк","Наталья Двойнишникова","Дмитрий Дедюхин","Артем Добрынин","Олеся Зайцева","Ярослав Закурдаев","Глеб Замашкин","Владислав Запрягаев","Марина Захарова","Светлана Зеленова","Ирина Зяблова","Анна Зятикова","Роман Калинкин","Юлия Качалова","Виктор Кашаев","Егор Ковлагин","Светлана Ковтун","Илья Кожин","Наталья Колесова","Валентин Колпаков","Илья Колпаков","Никита Колпаков","Елена Колпакова","Юлия Комарова","Михаил Конюхов","Павел Королев","Александр Корольков","Дмитрий Кочнев","Артем Кошецян","Дарья Лазарева","Ирина Лебедева","Инна Леванова","Александр Левин","Юлия Лещук","Алексей Максимов","Алексей Мальков","Анна Матвеева","Дмитрий Михелев","Татьяна Морозова","Наталья Москалюк","Евгения Мысина","Егор Нежигай","Елизавета Никитина","Дмитрий Новожилов","Антон Новосельский","Виктория Олайивола","Ирина Островецкая","Андрей Павлов","Ким Панкратов","Валентин Парфенов","Михаил Паутов","Сергей Петенин","Дмитрий Пичугин","Анастасия Плаксина","Роман Полевщиков","Владимир Прокопенко","Татьяна Пухова","Алексей Пчелкин","Дмитрий Рунов","Игнат Рыбкин","Екатерина Сафронова","Дмитрий Семенов","Леонид Сидлерёнок","Ольга Симонцева","Андрей Слонов","Валентина Смирнова","Алёна Теплова","Кирилл Тимофеев","Светлана Титова","Антон Тихонов","Владислав Травин","Михаил Туркин","Виктория Уливадова","Виолетта Уливадова","Ирина Усоева","Сергей Федоров","Виталий Федотов","Елена Федотова","Иван Фомин","Максим Фролов","Анна Фролова","Светлана Хирова","Алла Черкасова","Ольга Чернышенко","Максим Чугунов","Мария Чудненко","Александр Чучейкин","Наталья Шабашова","Ирина Шишкова","Любовь Яковлева","Александр Ярославцев"].sort((a,b)=>a.localeCompare(b,'ru'));
+
+let EMPLOYEES = FALLBACK_EMPLOYEES;
+let bitrixReady = false;
+
+function loadBitrixEmployees(){
+  if (typeof BX24 === 'undefined') return; // not running inside a Bitrix24 local app — keep fallback list
+  BX24.init(() => {
+    if (typeof BX24.installFinish === 'function') {
+      try { BX24.installFinish(); } catch (e) { /* already installed — harmless */ }
+    }
+    const names = [];
+    function handlePage(result){
+      if (result.error()) { console.error('Bitrix user.get error', result.error()); return; }
+      (result.data() || []).forEach(u => {
+        const full = `${(u.NAME || '').trim()} ${(u.LAST_NAME || '').trim()}`.trim();
+        if (full) names.push(full);
+      });
+      if (result.more()) {
+        result.next();
+      } else if (names.length) {
+        EMPLOYEES = [...new Set(names)].sort((a, b) => a.localeCompare(b, 'ru'));
+        bitrixReady = true;
+        populateEmployeeList();
+        updateChrome();
+      }
+    }
+    BX24.callMethod('user.get', { FILTER: { ACTIVE: true } }, handlePage);
+  });
+}
+
+function populateEmployeeList(){
+  const dl = document.getElementById('employeeList');
+  if (!dl) return;
+  dl.innerHTML = '';
+  EMPLOYEES.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    dl.appendChild(opt);
+  });
+}
+
+let circles = DEFAULT_CIRCLES.map(c => ({...c, members: [...c.members], candidates: [...(c.candidates||[])]}));
+let selectedId = null;
+
+/* ============ storage ============ */
+
+async function loadCircles(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if(res && res.value){
+      const parsed = JSON.parse(res.value);
+      if(Array.isArray(parsed) && parsed.length){
+        circles = parsed.map(c => ({
+          aka: '',
+          notes: '',
+          candidates: [],
+          ...c,
+          short: (c.short && c.short.length) ? c.short : deriveShort(c.title || '')
+        }));
+        render();
+      }
+    }
+  }catch(e){
+    // no saved data yet — keep defaults
+  }
+}
+
+async function saveCircles(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(circles), false);
+  }catch(e){
+    console.error('storage error', e);
+  }
+}
+
+/* ============ helpers ============ */
+
+function svgEl(tag, attrs){
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.entries(attrs || {}).forEach(([k,v]) => el.setAttribute(k, v));
+  return el;
+}
+
+function deriveShort(title){
+  const words = title.trim().split(/\s+/);
+  return words.slice(0, 2);
+}
+
+function fitFontSize(words, r){
+  const maxLen = Math.max(...words.map(w => w.length));
+  const targetWidth = r * 1.6;
+  const size = targetWidth / (maxLen * 0.62);
+  return Math.round(Math.max(13, Math.min(30, size)));
+}
+
+function pluralSoveta(n){
+  const mod10 = n % 10, mod100 = n % 100;
+  if(mod10===1 && mod100!==11) return 'совет';
+  if([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return 'совета';
+  return 'советов';
+}
+
+const COLORS = {
+  paper: '#e9edf0',
+  muted: '#8b96a1',
+  mutedSoft: '#6b7681',
+  ink: '#212930',
+  copper: '#dd944f',
+  copperDim: 'rgba(221,148,79,0.4)',
+  metalEdge: '#565e66',
+  bg2: '#141b23'
+};
+
+function computeRadius(count){
+  const minR = 42, maxR = 116, perMember = 9;
+  return Math.min(maxR, minR + count * perMember);
+}
+
+function packCircles(items){
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const free = items.filter(it => !it.fixed);
+  const fixed = items.filter(it => it.fixed);
+  const sortedFree = [...free].sort((a, b) => b.r - a.r);
+  sortedFree.forEach((it, i) => {
+    const dist = 15 * Math.sqrt(i);
+    const angle = i * golden;
+    it.x = dist * Math.cos(angle);
+    it.y = dist * Math.sin(angle);
+  });
+  const all = [...fixed, ...sortedFree];
+  const padding = 14;
+  for (let iter = 0; iter < 300; iter++) {
+    let moved = false;
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i], b = all[j];
+        if (a.fixed && b.fixed) continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const minDist = a.r + b.r + padding;
+        if (dist < minDist) {
+          moved = true;
+          const overlap = minDist - dist;
+          const ux = dx / dist, uy = dy / dist;
+          if (a.fixed) { b.x += ux * overlap; b.y += uy * overlap; }
+          else if (b.fixed) { a.x -= ux * overlap; a.y -= uy * overlap; }
+          else {
+            const half = overlap / 2;
+            a.x -= ux * half; a.y -= uy * half;
+            b.x += ux * half; b.y += uy * half;
+          }
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  return all;
+}
+
+function drawDiagram(){
+  const svg = document.getElementById('diagram');
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const margin = 60;
+  const ghostR = 42;
+  const packItems = circles.map(c => {
+    const r = computeRadius(c.members.length);
+    return c.pos
+      ? { id: c.id, r, circle: c, fixed: true, x: c.pos.x, y: c.pos.y }
+      : { id: c.id, r, circle: c, fixed: false };
+  });
+  const packed = packCircles(packItems);
+
+  const minX = Math.min(...packed.map(p => p.x - p.r));
+  const maxX = Math.max(...packed.map(p => p.x + p.r));
+  const minY = Math.min(...packed.map(p => p.y - p.r));
+  const maxY = Math.max(...packed.map(p => p.y + p.r));
+  const width = Math.max(600, maxX - minX + margin * 2);
+  const height = Math.max(500, maxY - minY + margin * 2);
+  const offX = margin - minX, offY = margin - minY;
+
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Схема кругов ШильдПанель');
+
+  const defs = svgEl('defs', {});
+  const grad = svgEl('radialGradient', { id: 'plateGrad', cx: '35%', cy: '28%', r: '78%' });
+  grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#d8dde2' }));
+  grad.appendChild(svgEl('stop', { offset: '55%', 'stop-color': '#aab1b8' }));
+  grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#767f88' }));
+  defs.appendChild(grad);
+  const redGrad = svgEl('radialGradient', { id: 'redGrad', cx: '35%', cy: '28%', r: '78%' });
+  redGrad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#f8cec7' }));
+  redGrad.appendChild(svgEl('stop', { offset: '55%', 'stop-color': '#ef9d92' }));
+  redGrad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#da7264' }));
+  defs.appendChild(redGrad);
+  svg.appendChild(defs);
+
+  packed.forEach(p => {
+    const cx = p.x + offX, cy = p.y + offY;
+    const wrapper = svgEl('g', {});
+    wrapper.appendChild(buildNode(p.circle, cx, cy, p.r));
+    makeDraggable(wrapper, p.circle, p.x, p.y);
+    svg.appendChild(wrapper);
+  });
+
+  // "add circle" node — pinned to the bottom-left corner
+  const ghostCx = margin + ghostR;
+  const ghostCy = height - margin - ghostR;
+  svg.appendChild(buildGhostNode(ghostCx, ghostCy, ghostR));
+
+  updateSelection();
+}
+
+/* ============ hover tooltip ============ */
+
+const tooltip = document.getElementById('tooltip');
+
+function positionTooltip(clientX, clientY){
+  const pad = 16;
+  let x = clientX + pad, y = clientY + pad;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (x + 250 > vw) x = clientX - 250 - pad;
+  if (y + 90 > vh) y = clientY - 90 - pad;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+function showTooltip(body, clientX, clientY){
+  tooltip.innerHTML = '';
+  if (Array.isArray(body)) {
+    body.forEach(line => {
+      const d = document.createElement('div');
+      d.className = 'tt-line';
+      d.textContent = line;
+      tooltip.appendChild(d);
+    });
+  } else {
+    const d = document.createElement('div');
+    d.className = 'tt-members';
+    d.textContent = body;
+    tooltip.appendChild(d);
+  }
+  positionTooltip(clientX, clientY);
+  tooltip.classList.add('visible');
+}
+
+function hideTooltip(){
+  tooltip.classList.remove('visible');
+}
+
+function makeDraggable(wrapper, circle, rawX, rawY){
+  wrapper.style.cursor = 'grab';
+  wrapper.style.touchAction = 'none';
+  let startClientX = 0, startClientY = 0, dragging = false, moved = false;
+  const svg = document.getElementById('diagram');
+
+  function scale(){
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    return { sx: (vb.width || rect.width) / rect.width, sy: (vb.height || rect.height) / rect.height };
+  }
+
+  wrapper.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    dragging = true; moved = false;
+    startClientX = e.clientX; startClientY = e.clientY;
+    wrapper.setPointerCapture(e.pointerId);
+    wrapper.style.cursor = 'grabbing';
+    hideTooltip();
+  });
+
+  wrapper.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const { sx, sy } = scale();
+    const dx = (e.clientX - startClientX) * sx;
+    const dy = (e.clientY - startClientY) * sy;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    wrapper.setAttribute('transform', `translate(${dx},${dy})`);
+  });
+
+  function endDrag(e){
+    if (!dragging) return;
+    dragging = false;
+    wrapper.style.cursor = 'grab';
+    if (moved) {
+      const { sx, sy } = scale();
+      const dx = (e.clientX - startClientX) * sx;
+      const dy = (e.clientY - startClientY) * sy;
+      circle.pos = { x: rawX + dx, y: rawY + dy };
+      saveCircles();
+      render();
+    } else {
+      wrapper.removeAttribute('transform');
+      openDrawer(circle.id);
+    }
+  }
+  wrapper.addEventListener('pointerup', endDrag);
+  wrapper.addEventListener('pointercancel', endDrag);
+}
+
+function buildNode(circle, cx, cy, r){
+  const g = svgEl('g', { class: 'node', 'data-id': circle.id, tabindex: '0', role: 'button', 'aria-label': circle.title });
+
+  const empty = circle.members.length === 0;
+  const plate = svgEl('circle', { class: 'plate', cx, cy, r, fill: empty ? 'url(#redGrad)' : 'url(#plateGrad)', stroke: COLORS.metalEdge, 'stroke-width': 1.5 });
+  g.appendChild(plate);
+
+  const highlight = svgEl('path', {
+    d: describeArc(cx, cy, r - 8, -150, -30),
+    fill: 'none', stroke: 'rgba(255,255,255,0.35)', 'stroke-width': 2, 'stroke-linecap': 'round'
+  });
+  g.appendChild(highlight);
+
+  const shortWords = (circle.short && circle.short.length) ? circle.short : deriveShort(circle.title);
+  const coreSize = fitFontSize(shortWords, r);
+  const coreLH = Math.round(coreSize * 1.18);
+  shortWords.forEach((word, i) => {
+    const y = cy + (i - (shortWords.length - 1) / 2) * coreLH + coreSize * 0.35;
+    const shadow = svgEl('text', { x: cx, y: y + 1, 'text-anchor': 'middle', 'font-family': "'IBM Plex Mono', monospace", 'font-size': coreSize, 'font-weight': 600, fill: 'rgba(255,255,255,0.45)' });
+    shadow.textContent = word;
+    const ink = svgEl('text', { x: cx, y, 'text-anchor': 'middle', 'font-family': "'IBM Plex Mono', monospace", 'font-size': coreSize, 'font-weight': 600, fill: COLORS.ink });
+    ink.textContent = word;
+    g.appendChild(shadow);
+    g.appendChild(ink);
+  });
+
+  const core = svgEl('circle', { class: 'core-zone', cx, cy, r: r / 3, fill: 'rgba(255,255,255,0.22)' });
+  g.appendChild(core);
+
+  const respBody = () => circle.notes ? circle.notes : 'Зона ответственности не указана';
+  const membersBody = () => circle.members.length ? circle.members : ['Пока никого'];
+
+  plate.addEventListener('mouseenter', (e) => showTooltip(respBody(), e.clientX, e.clientY));
+  plate.addEventListener('mousemove', (e) => positionTooltip(e.clientX, e.clientY));
+  plate.addEventListener('mouseleave', hideTooltip);
+
+  core.addEventListener('mouseenter', (e) => { e.stopPropagation(); showTooltip(membersBody(), e.clientX, e.clientY); });
+  core.addEventListener('mousemove', (e) => { e.stopPropagation(); positionTooltip(e.clientX, e.clientY); });
+  core.addEventListener('mouseleave', hideTooltip);
+
+  g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(circle.id); } });
+
+  return g;
+}
+
+function buildGhostNode(cx, cy, r){
+  const g = svgEl('g', { class: 'ghost-node', tabindex: '0', role: 'button', 'aria-label': 'Добавить новый совет' });
+  g.appendChild(svgEl('circle', { class: 'ghost-ring', cx, cy, r, fill: COLORS.bg2, stroke: COLORS.copperDim, 'stroke-width': 2, 'stroke-dasharray': '6 7' }));
+  const s = 14;
+  g.appendChild(svgEl('line', { class: 'ghost-plus', x1: cx - s, y1: cy, x2: cx + s, y2: cy, stroke: COLORS.muted, 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
+  g.appendChild(svgEl('line', { class: 'ghost-plus', x1: cx, y1: cy - s, x2: cx, y2: cy + s, stroke: COLORS.muted, 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
+  g.addEventListener('click', openModal);
+  g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(); } });
+  return g;
+}
+
+function describeArc(cx, cy, r, startAngle, endAngle){
+  const toRad = a => (a - 90) * Math.PI / 180;
+  const p1 = { x: cx + r * Math.cos(toRad(startAngle)), y: cy + r * Math.sin(toRad(startAngle)) };
+  const p2 = { x: cx + r * Math.cos(toRad(endAngle)), y: cy + r * Math.sin(toRad(endAngle)) };
+  const large = endAngle - startAngle <= 180 ? 0 : 1;
+  return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
+}
+
+function updateSelection(){
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.toggle('selected', n.getAttribute('data-id') === selectedId);
+  });
+}
+
+/* ============ drawer ============ */
+
+const drawer = document.getElementById('drawer');
+const scrim = document.getElementById('scrim');
+const drawerInner = document.getElementById('drawerInner');
+
+function openDrawer(id){
+  selectedId = id;
+  updateSelection();
+  renderDrawer();
+  drawer.classList.add('open');
+  scrim.classList.add('open');
+  hideTooltip();
+}
+
+function closeDrawer(){
+  selectedId = null;
+  updateSelection();
+  drawer.classList.remove('open');
+  scrim.classList.remove('open');
+}
+
+scrim.addEventListener('click', closeDrawer);
+
+function renderDrawer(){
+  const circle = circles.find(c => c.id === selectedId);
+  if (!circle){ drawerInner.innerHTML = ''; return; }
+
+  drawerInner.innerHTML = '';
+
+  const top = document.createElement('div');
+  top.className = 'drawer-top';
+
+  const topInfo = document.createElement('div');
+  topInfo.className = 'drawer-top-info';
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'drawer-eyebrow';
+  eyebrow.textContent = 'Совет';
+  topInfo.appendChild(eyebrow);
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'title-input';
+  titleInput.value = circle.title;
+  titleInput.setAttribute('aria-label', 'Название совета');
+  const saveTitle = () => {
+    const val = titleInput.value.trim();
+    if (!val || val === circle.title) { titleInput.value = circle.title; return; }
+    circle.title = val;
+    circle.short = deriveShort(val);
+    saveCircles();
+    render();
+  };
+  titleInput.addEventListener('blur', saveTitle);
+  titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') titleInput.blur(); });
+  topInfo.appendChild(titleInput);
+
+  if (circle.aka) {
+    const akaP = document.createElement('p');
+    akaP.className = 'aka';
+    akaP.textContent = circle.aka;
+    topInfo.appendChild(akaP);
+  }
+  top.appendChild(topInfo);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'drawer-close';
+  closeBtn.setAttribute('aria-label', 'Закрыть');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', closeDrawer);
+  top.appendChild(closeBtn);
+  drawerInner.appendChild(top);
+
+  const membersSection = document.createElement('div');
+  membersSection.className = 'drawer-section';
+  membersSection.innerHTML = `<h3>Участники · ${circle.members.length}</h3>`;
+  const chipRow = document.createElement('div');
+  chipRow.className = 'chip-row';
+  circle.members.forEach((name, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const upBtn = document.createElement('button');
+    upBtn.className = 'chip-move';
+    upBtn.setAttribute('aria-label', 'Переместить выше');
+    upBtn.textContent = '↑';
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener('click', () => moveMember(circle.id, idx, -1));
+    const downBtn = document.createElement('button');
+    downBtn.className = 'chip-move';
+    downBtn.setAttribute('aria-label', 'Переместить ниже');
+    downBtn.textContent = '↓';
+    downBtn.disabled = idx === circle.members.length - 1;
+    downBtn.addEventListener('click', () => moveMember(circle.id, idx, 1));
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    const rm = document.createElement('button');
+    rm.setAttribute('aria-label', 'Удалить участника');
+    rm.textContent = '×';
+    rm.addEventListener('click', () => removeMember(circle.id, idx));
+    chip.appendChild(upBtn);
+    chip.appendChild(downBtn);
+    chip.appendChild(nameSpan);
+    chip.appendChild(rm);
+    chipRow.appendChild(chip);
+  });
+  membersSection.appendChild(chipRow);
+
+  const addRow = document.createElement('div');
+  addRow.className = 'add-row';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Имя участника';
+  input.setAttribute('list', 'employeeList');
+  input.setAttribute('autocomplete', 'off');
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-copper';
+  addBtn.textContent = 'Добавить';
+  const doAdd = () => {
+    const val = input.value.trim();
+    if (!val) return;
+    addMember(circle.id, val);
+    input.value = '';
+  };
+  addBtn.addEventListener('click', doAdd);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+  addRow.appendChild(input);
+  addRow.appendChild(addBtn);
+  membersSection.appendChild(addRow);
+  drawerInner.appendChild(membersSection);
+
+  const candidates = circle.candidates || [];
+  const candSection = document.createElement('div');
+  candSection.className = 'drawer-section';
+  candSection.innerHTML = `<h3>Кандидаты на участие · ${candidates.length}</h3>`;
+  const candRow = document.createElement('div');
+  candRow.className = 'chip-row';
+  candidates.forEach((name, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    const rm = document.createElement('button');
+    rm.setAttribute('aria-label', 'Удалить кандидата');
+    rm.textContent = '×';
+    rm.addEventListener('click', () => removeCandidate(circle.id, idx));
+    chip.appendChild(nameSpan);
+    chip.appendChild(rm);
+    candRow.appendChild(chip);
+  });
+  candSection.appendChild(candRow);
+
+  const candAddRow = document.createElement('div');
+  candAddRow.className = 'add-row';
+  const candInput = document.createElement('input');
+  candInput.type = 'text';
+  candInput.placeholder = 'Имя кандидата';
+  candInput.setAttribute('list', 'employeeList');
+  candInput.setAttribute('autocomplete', 'off');
+  const candAddBtn = document.createElement('button');
+  candAddBtn.className = 'btn-copper';
+  candAddBtn.textContent = 'Добавить';
+  const doCandAdd = () => {
+    const val = candInput.value.trim();
+    if (!val) return;
+    addCandidate(circle.id, val);
+    candInput.value = '';
+  };
+  candAddBtn.addEventListener('click', doCandAdd);
+  candInput.addEventListener('keydown', e => { if (e.key === 'Enter') doCandAdd(); });
+  candAddRow.appendChild(candInput);
+  candAddRow.appendChild(candAddBtn);
+  candSection.appendChild(candAddRow);
+  drawerInner.appendChild(candSection);
+
+  const notesSection = document.createElement('div');
+  notesSection.className = 'drawer-section';
+  notesSection.innerHTML = `<h3>Зона ответственности</h3>`;
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = 'Например: за что этот совет отвечает и какие вопросы решает';
+  textarea.value = circle.notes || '';
+  let saveTimer = null;
+  textarea.addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      circle.notes = textarea.value;
+      saveCircles();
+    }, 500);
+  });
+  notesSection.appendChild(textarea);
+  const saveNote = document.createElement('p');
+  saveNote.className = 'save-note';
+  saveNote.textContent = 'Сохраняется автоматически';
+  notesSection.appendChild(saveNote);
+  drawerInner.appendChild(notesSection);
+
+  if (circle.kind !== 'anchor'){
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger-link';
+    delBtn.textContent = 'Удалить этот совет';
+    delBtn.addEventListener('click', () => {
+      showConfirm(`Удалить совет «${circle.title}»?`, () => {
+        circles = circles.filter(c => c.id !== circle.id);
+        closeDrawer();
+        saveCircles();
+        render();
+      }, 'Удалить');
+    });
+    drawerInner.appendChild(delBtn);
+  }
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function addMember(id, name){
+  const circle = circles.find(c => c.id === id);
+  if (!circle) return;
+  circle.members.push(name);
+  saveCircles();
+  render();
+  renderDrawer();
+}
+
+function removeMember(id, idx){
+  const circle = circles.find(c => c.id === id);
+  if (!circle) return;
+  circle.members.splice(idx, 1);
+  saveCircles();
+  render();
+  renderDrawer();
+}
+
+function moveMember(id, idx, dir){
+  const circle = circles.find(c => c.id === id);
+  if (!circle) return;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= circle.members.length) return;
+  const tmp = circle.members[idx];
+  circle.members[idx] = circle.members[newIdx];
+  circle.members[newIdx] = tmp;
+  saveCircles();
+  render();
+  renderDrawer();
+}
+
+function addCandidate(id, name){
+  const circle = circles.find(c => c.id === id);
+  if (!circle) return;
+  if (!circle.candidates) circle.candidates = [];
+  circle.candidates.push(name);
+  saveCircles();
+  render();
+  renderDrawer();
+}
+
+function removeCandidate(id, idx){
+  const circle = circles.find(c => c.id === id);
+  if (!circle || !circle.candidates) return;
+  circle.candidates.splice(idx, 1);
+  saveCircles();
+  render();
+  renderDrawer();
+}
+
+/* ============ custom confirm (native confirm() is blocked in this sandbox) ============ */
+
+const confirmScrim = document.getElementById('confirmScrim');
+const confirmMessage = document.getElementById('confirmMessage');
+const confirmOk = document.getElementById('confirmOk');
+const confirmCancel = document.getElementById('confirmCancel');
+let confirmCallback = null;
+
+function showConfirm(message, onConfirm, okLabel){
+  confirmMessage.textContent = message;
+  confirmOk.textContent = okLabel || 'Да';
+  confirmCallback = onConfirm;
+  confirmScrim.classList.add('open');
+}
+function closeConfirm(){
+  confirmScrim.classList.remove('open');
+  confirmCallback = null;
+}
+confirmCancel.addEventListener('click', closeConfirm);
+confirmScrim.addEventListener('click', (e) => { if (e.target === confirmScrim) closeConfirm(); });
+confirmOk.addEventListener('click', () => {
+  const cb = confirmCallback;
+  closeConfirm();
+  if (cb) cb();
+});
+
+/* ============ new-circle modal ============ */
+
+const modalScrim = document.getElementById('modalScrim');
+const newTitleInput = document.getElementById('newTitle');
+const newMembersInput = document.getElementById('newMembers');
+
+function openModal(){
+  newTitleInput.value = '';
+  newMembersInput.value = '';
+  modalScrim.classList.add('open');
+  setTimeout(() => newTitleInput.focus(), 50);
+}
+
+function closeModal(){
+  modalScrim.classList.remove('open');
+}
+
+document.getElementById('modalCancel').addEventListener('click', closeModal);
+modalScrim.addEventListener('click', (e) => { if (e.target === modalScrim) closeModal(); });
+
+document.getElementById('modalCreate').addEventListener('click', () => {
+  const title = newTitleInput.value.trim();
+  const membersRaw = newMembersInput.value.trim();
+  if (!title) { newTitleInput.focus(); return; }
+  const members = membersRaw ? membersRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const id = 'c' + Date.now();
+  circles.push({ id, kind: 'sub', title, short: deriveShort(title), aka: '', members, notes: '', candidates: [] });
+  closeModal();
+  saveCircles();
+  render();
+});
+
+/* ============ footer / head ============ */
+
+function updateChrome(){
+  const n = circles.length;
+  const src = bitrixReady ? '· сотрудники из Bitrix24' : '';
+  document.getElementById('headMark').innerHTML = `ШильдПанель<br><b>${n}</b> ${pluralSoveta(n)} сейчас ${src}`;
+  document.getElementById('footNote').textContent = 'Изменения видны только вам';
+}
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  showConfirm('Вернуть систему кругов к исходному виду? Добавленные советы и правки будут удалены.', async () => {
+    circles = DEFAULT_CIRCLES.map(c => ({ ...c, members: [...c.members], candidates: [...(c.candidates||[])] }));
+    closeDrawer();
+    await saveCircles();
+    render();
+  }, 'Вернуть');
+});
+
+/* ============ boot ============ */
+
+function render(){
+  updateChrome();
+  drawDiagram();
+}
+
+render();
+loadCircles();
+populateEmployeeList();
+loadBitrixEmployees();
+
+</script>
+</body>
+</html>
